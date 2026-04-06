@@ -4,6 +4,8 @@ CounselCall helps clients find attorneys and book consultation sessions without 
 
 ## Demo
 
+![CounselCall demo](demo.gif)
+
 ## Test Credentials
 
 > **Demo Login Box**
