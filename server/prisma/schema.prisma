@@ -1,0 +1,103 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CLIENT
+  ATTORNEY
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role
+  createdAt DateTime @default(now())
+
+  attorneyProfile    AttorneyProfile?
+  availability       Availability[]
+  blockedDates       BlockedDate[]
+  bookingsAsClient   Booking[] @relation("ClientBookings")
+  bookingsAsAttorney Booking[] @relation("AttorneyBookings")
+  reviewsAsClient    Review[]  @relation("ClientReviews")
+  reviewsAsAttorney  Review[]  @relation("AttorneyReviews")
+}
+
+model AttorneyProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  bio           String   @default("")
+  practiceAreas Json     @default("[]")
+  hourlyRate    Float
+  photoUrl      String?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Availability {
+  id         String @id @default(uuid())
+  attorneyId String
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+
+  attorney User @relation(fields: [attorneyId], references: [id], onDelete: Cascade)
+
+  @@index([attorneyId, dayOfWeek])
+}
+
+model BlockedDate {
+  id         String   @id @default(uuid())
+  attorneyId String
+  date       DateTime @db.Date
+
+  attorney User @relation(fields: [attorneyId], references: [id], onDelete: Cascade)
+
+  @@unique([attorneyId, date])
+  @@index([attorneyId])
+}
+
+model Booking {
+  id         String        @id @default(uuid())
+  clientId   String
+  attorneyId String
+  date       DateTime      @db.Date
+  startTime  String
+  endTime    String
+  status     BookingStatus @default(PENDING)
+  notes      String?
+  createdAt  DateTime      @default(now())
+
+  client   User @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)
+  attorney User @relation("AttorneyBookings", fields: [attorneyId], references: [id], onDelete: Cascade)
+
+  @@index([attorneyId, date])
+  @@index([clientId, date])
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  clientId   String
+  attorneyId String
+  rating     Int
+  comment    String
+  createdAt  DateTime @default(now())
+
+  client   User @relation("ClientReviews", fields: [clientId], references: [id], onDelete: Cascade)
+  attorney User @relation("AttorneyReviews", fields: [attorneyId], references: [id], onDelete: Cascade)
+
+  @@index([attorneyId])
+}
