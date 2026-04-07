@@ -6,17 +6,6 @@ CounselCall helps clients find attorneys and book consultation sessions without 
 
 ![CounselCall demo](demo.gif)
 
-## Screenshots
-
-### Client Payment Flow
-
-![Client payment view](docs/screenshots/client_payment.png)
-
-![Client payment view](docs/screenshots/stripe_client_payment.png)
-
-### Client Dashboard
-
-
 ## Test Credentials
 
 > **Demo Login Box**
@@ -41,6 +30,18 @@ People who need legal help often struggle to find a lawyer who matches their nee
 Attorneys often manage availability through messages and calls, which leads to missed updates and accidental overlaps. CounselCall gives attorneys a direct way to set weekly hours, block days off, and handle bookings from one dashboard.
 
 Clients and attorneys also need a shared source of truth for booking status, cancellations, and feedback. This app tracks the full booking lifecycle so both sides can see the same information.
+
+## Screenshots
+
+### Client Payment Flow
+
+![Client payment view](docs/screenshots/client_payment.png)
+
+![Client payment view](docs/screenshots/stripe_client_payment.png)
+
+### Client Dashboard
+
+![Client payment view](docs/screenshots/client_dashboard.png)
 
 ## Key Features
 
