@@ -6,6 +6,7 @@ import {
   setCachedAvailability,
 } from "../cache/redis";
 import { prisma } from "../lib/prisma";
+import { requireStripe } from "../lib/stripe";
 import { addMinutes, isValidTime, isWithinRange, toDateOnly } from "../lib/time";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
@@ -67,9 +68,18 @@ router.post(
 
     const attorney = await prisma.user.findFirst({
       where: { id: attorneyId, role: Role.ATTORNEY },
-      select: { id: true },
+      select: {
+        id: true,
+        attorneyProfile: {
+          select: {
+            hourlyRate: true,
+            stripeAccountId: true,
+            stripeOnboardingComplete: true,
+          },
+        },
+      },
     });
-    if (!attorney) {
+    if (!attorney || !attorney.attorneyProfile) {
       return res.status(404).json({ error: "Attorney not found" });
     }
 
@@ -104,6 +114,21 @@ router.post(
       });
     }
 
+    const shouldCreatePaymentIntent =
+      Boolean(attorney.attorneyProfile.stripeAccountId) &&
+      attorney.attorneyProfile.stripeOnboardingComplete;
+
+    const amountInCents = Math.round(
+      attorney.attorneyProfile.hourlyRate * (durationMinutes / 60) * 100,
+    );
+
+    if (shouldCreatePaymentIntent && amountInCents < 50) {
+      return res.status(400).json({
+        error:
+          "Attorney fee is too low to process via Stripe. Please contact support.",
+      });
+    }
+
     const booking = await prisma.booking.create({
       data: {
         clientId: req.user!.id,
@@ -116,7 +141,46 @@ router.post(
       },
     });
 
-    return res.status(201).json({ booking });
+    if (!shouldCreatePaymentIntent) {
+      return res.status(201).json({ booking, clientSecret: null });
+    }
+
+    try {
+      const stripe = requireStripe();
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountInCents,
+        currency: "usd",
+        capture_method: "manual",
+        transfer_data: {
+          destination: attorney.attorneyProfile.stripeAccountId!,
+        },
+        application_fee_amount: Math.round(amountInCents * 0.1),
+        metadata: {
+          bookingId: booking.id,
+          attorneyId,
+          clientId: req.user!.id,
+        },
+      });
+
+      const updatedBooking = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          paymentIntentId: paymentIntent.id,
+          amountInCents,
+        },
+      });
+
+      return res.status(201).json({
+        booking: updatedBooking,
+        clientSecret: paymentIntent.client_secret,
+      });
+    } catch (error) {
+      console.error("Failed to create payment intent for booking", error);
+      await prisma.booking.delete({ where: { id: booking.id } });
+      return res.status(502).json({
+        error: "Unable to initialize payment for this booking. Please try again.",
+      });
+    }
   },
 );
 

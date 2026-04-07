@@ -12,6 +12,7 @@ export type AttorneyProfile = {
   practiceAreas: string[];
   hourlyRate: number;
   photoUrl: string | null;
+  stripeOnboardingComplete?: boolean;
 };
 
 export type AttorneyListItem = {
@@ -53,6 +54,8 @@ export type Booking = {
   endTime: string;
   status: "PENDING" | "CONFIRMED" | "CANCELLED";
   notes: string | null;
+  paymentIntentId?: string | null;
+  amountInCents?: number | null;
   createdAt: string;
   client?: {
     id: string;

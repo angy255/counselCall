@@ -7,7 +7,7 @@ import bookingRoutes from "./routes/bookings";
 import attorneyRoutes from "./routes/attorneys";
 import attorneyDashboardRoutes from "./routes/dashboard/attorney";
 import clientDashboardRoutes from "./routes/dashboard/client";
-import stripeRoutes from "./routes/stripe";
+import stripeRoutes, { stripeWebhookHandler } from "./routes/stripe";
 import uploadRoutes from "./routes/upload";
 
 const app = express();
@@ -19,6 +19,7 @@ app.use(
   }),
 );
 app.use(cookieParser());
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => {

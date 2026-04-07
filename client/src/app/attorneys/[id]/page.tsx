@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { PaymentForm } from "../../../components/PaymentForm";
 import { apiFetch } from "../../../lib/api";
 import { DAYS_OF_WEEK } from "../../../lib/constants";
 import { useAuth } from "../../../lib/auth-context";
@@ -30,12 +31,26 @@ export default function AttorneyDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
+  const [submittingBooking, setSubmittingBooking] = useState(false);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [bookingAmount, setBookingAmount] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: "",
     startTime: "",
     durationMinutes: 30 as 30 | 60,
     notes: "",
   });
+
+  const hourlyRate = attorney?.attorneyProfile?.hourlyRate || 0;
+  const feeSummary = useMemo(() => {
+    const consultationFee = hourlyRate * (form.durationMinutes / 60);
+    const platformFee = consultationFee * 0.1;
+    return {
+      consultationFee,
+      platformFee,
+      total: consultationFee,
+    };
+  }, [hourlyRate, form.durationMinutes]);
 
   useEffect(() => {
     async function load() {
@@ -69,8 +84,12 @@ export default function AttorneyDetailPage() {
     e.preventDefault();
     setBookingError(null);
     setBookingSuccess(null);
+    setSubmittingBooking(true);
     try {
-      await apiFetch("/bookings", {
+      const data = await apiFetch<{
+        booking: { amountInCents?: number | null };
+        clientSecret: string | null;
+      }>("/bookings", {
         method: "POST",
         body: JSON.stringify({
           attorneyId: params.id,
@@ -80,11 +99,31 @@ export default function AttorneyDetailPage() {
           notes: form.notes.trim() || undefined,
         }),
       });
-      setBookingSuccess("Consultation request submitted successfully.");
-      setForm({ date: "", startTime: "", durationMinutes: 30, notes: "" });
+
+      if (data.clientSecret) {
+        setClientSecret(data.clientSecret);
+        setBookingAmount(
+          typeof data.booking.amountInCents === "number"
+            ? data.booking.amountInCents / 100
+            : feeSummary.total,
+        );
+      } else {
+        setBookingSuccess("Consultation request submitted successfully.");
+        setForm({ date: "", startTime: "", durationMinutes: 30, notes: "" });
+      }
     } catch (err) {
       setBookingError(err instanceof Error ? err.message : "Booking failed");
+    } finally {
+      setSubmittingBooking(false);
     }
+  }
+
+  function handlePaymentSuccess() {
+    setClientSecret(null);
+    setBookingAmount(null);
+    setBookingError(null);
+    setForm({ date: "", startTime: "", durationMinutes: 30, notes: "" });
+    setBookingSuccess("Booking submitted - payment authorized.");
   }
 
   if (loading) {
@@ -137,6 +176,43 @@ export default function AttorneyDetailPage() {
             <p className="mt-2 text-sm text-slate-600">
               Login as a client to request a consultation.
             </p>
+          ) : clientSecret ? (
+            <div className="mt-4 space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium">Consultation fee summary</p>
+                <p className="mt-1">
+                  Hourly rate: <span className="font-medium">${hourlyRate.toFixed(2)}</span>
+                </p>
+                <p>
+                  Duration: <span className="font-medium">{form.durationMinutes} minutes</span>
+                </p>
+                <p>
+                  Total:{" "}
+                  <span className="font-medium">
+                    ${(bookingAmount ?? feeSummary.total).toFixed(2)}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-500">
+                  Platform fee (10%): ${feeSummary.platformFee.toFixed(2)}
+                </p>
+              </div>
+              <PaymentForm
+                clientSecret={clientSecret}
+                amount={bookingAmount ?? feeSummary.total}
+                onSuccess={handlePaymentSuccess}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setClientSecret(null);
+                  setBookingAmount(null);
+                  setBookingError(null);
+                }}
+                className="w-full rounded-md border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50"
+              >
+                Back to booking form
+              </button>
+            </div>
           ) : (
             <form onSubmit={handleBookingSubmit} className="mt-4 space-y-3">
               <div>
@@ -194,9 +270,10 @@ export default function AttorneyDetailPage() {
               )}
               <button
                 type="submit"
+                disabled={submittingBooking}
                 className="w-full rounded-md bg-slate-800 px-4 py-2 text-white hover:bg-slate-700"
               >
-                Request booking
+                {submittingBooking ? "Submitting..." : "Request booking"}
               </button>
             </form>
           )}

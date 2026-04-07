@@ -88,13 +88,17 @@ export default function ClientDashboardPage() {
                   Attorney: {booking.attorney?.name}
                 </p>
                 <p className="mt-1 text-sm text-slate-700">Status: {booking.status}</p>
-                <button
-                  type="button"
-                  onClick={() => void cancelBooking(booking.id)}
-                  className="mt-3 rounded-md bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-500"
-                >
-                  Cancel booking
-                </button>
+                {booking.status === "CANCELLED" ? (
+                  <p className="mt-3 text-sm font-medium text-slate-500">Cancelled</p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void cancelBooking(booking.id)}
+                    className="mt-3 rounded-md bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-500"
+                  >
+                    Cancel booking
+                  </button>
+                )}
               </article>
             ))}
           </div>
