@@ -36,17 +36,21 @@ export default function AttorneyDashboardPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [connectLoading, setConnectLoading] = useState(false);
+  const [stripeOnboardingComplete, setStripeOnboardingComplete] = useState(false);
 
   async function loadAll() {
     setError(null);
     try {
-      const [p, a, b, upcoming, bookingHistory, attorneyReviews] = await Promise.all([
+      const [p, a, b, upcoming, bookingHistory, attorneyReviews, stripeStatus] =
+        await Promise.all([
         apiFetch<{ profile: Profile }>("/dashboard/attorney/profile"),
         apiFetch<{ availability: AvailabilityEntry[] }>("/dashboard/attorney/availability"),
         apiFetch<{ blockedDates: BlockedDate[] }>("/dashboard/attorney/blocked-dates"),
         apiFetch<{ bookings: Booking[] }>("/dashboard/attorney/bookings?scope=upcoming"),
         apiFetch<{ bookings: Booking[] }>("/dashboard/attorney/bookings?scope=history"),
         apiFetch<{ reviews: Review[] }>("/dashboard/attorney/reviews"),
+        apiFetch<{ stripeOnboardingComplete: boolean }>("/stripe/connect/status"),
       ]);
       setProfile({
         bio: p.profile.bio || "",
@@ -59,6 +63,7 @@ export default function AttorneyDashboardPage() {
       setBookings(upcoming.bookings);
       setHistory(bookingHistory.bookings);
       setReviews(attorneyReviews.reviews);
+      setStripeOnboardingComplete(Boolean(stripeStatus.stripeOnboardingComplete));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     }
@@ -66,6 +71,37 @@ export default function AttorneyDashboardPage() {
 
   useEffect(() => {
     void loadAll();
+  }, []);
+
+  useEffect(() => {
+    const stripeStatus = new URLSearchParams(window.location.search).get("stripe");
+    if (!stripeStatus) {
+      return;
+    }
+
+    if (stripeStatus === "connected") {
+      setMessage("Stripe account connected. Payouts are enabled.");
+      setError(null);
+      setStripeOnboardingComplete(true);
+      return;
+    }
+
+    if (stripeStatus === "pending") {
+      setMessage("Stripe onboarding is still pending. Complete all required steps.");
+      setError(null);
+      return;
+    }
+
+    if (stripeStatus === "refresh") {
+      setMessage("Please finish Stripe onboarding to enable payouts.");
+      setError(null);
+      return;
+    }
+
+    if (stripeStatus === "missing_account" || stripeStatus === "error") {
+      setError("Stripe onboarding could not be completed. Please try connecting again.");
+      setMessage(null);
+    }
   }, []);
 
   async function updateProfile(e: FormEvent) {
@@ -186,12 +222,51 @@ export default function AttorneyDashboardPage() {
     }
   }
 
+  async function startConnectFlow() {
+    setConnectLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const data = await apiFetch<{ url: string }>("/stripe/connect", {
+        method: "POST",
+      });
+      window.location.href = data.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start Stripe onboarding");
+      setConnectLoading(false);
+    }
+  }
+
   return (
     <RequireAuth role="ATTORNEY">
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
         <h1 className="text-2xl font-semibold">Attorney Dashboard</h1>
         {message && <p className="text-sm text-emerald-700">{message}</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <section className="rounded-lg border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-semibold">Payouts</h2>
+          {stripeOnboardingComplete ? (
+            <div className="mt-3 inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
+              Payouts enabled
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <p className="text-sm text-slate-600">
+                Connect your bank account through Stripe to receive consultation payouts.
+              </p>
+              <button
+                type="button"
+                onClick={() => void startConnectFlow()}
+                disabled={connectLoading}
+                className="rounded-md bg-slate-800 px-4 py-2 text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {connectLoading ? "Redirecting..." : "Connect Bank Account"}
+              </button>
+            </div>
+          )}
+        </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5">
           <h2 className="text-lg font-semibold">Profile</h2>
@@ -402,22 +477,32 @@ export default function AttorneyDashboardPage() {
                   Client: {booking.client?.name} ({booking.client?.email})
                 </p>
                 <p className="mt-1 text-sm text-slate-700">Status: {booking.status}</p>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void updateBookingStatus(booking.id, "CONFIRMED")}
-                    className="rounded-md bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-500"
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void updateBookingStatus(booking.id, "CANCELLED")}
-                    className="rounded-md bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-500"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                {booking.status === "PENDING" ? (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void updateBookingStatus(booking.id, "CONFIRMED")}
+                      className="rounded-md bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-500"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void updateBookingStatus(booking.id, "CANCELLED")}
+                      className="rounded-md bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-500"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : booking.status === "CONFIRMED" ? (
+                  <span className="mt-3 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
+                    Confirmed
+                  </span>
+                ) : (
+                  <span className="mt-3 inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">
+                    Cancelled
+                  </span>
+                )}
               </article>
             ))}
           </div>

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { invalidateAttorneyAvailabilityCache } from "../../cache/redis";
 import { PRACTICE_AREAS } from "../../config/constants";
 import { prisma } from "../../lib/prisma";
+import { requireStripe } from "../../lib/stripe";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 
@@ -29,6 +30,19 @@ const blockedDateSchema = z.object({
 const bookingStatusSchema = z.object({
   status: z.enum([BookingStatus.CONFIRMED, BookingStatus.CANCELLED]),
 });
+
+function errorMessage(
+  error: unknown,
+  fallback: string,
+) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
+  }
+  return fallback;
+}
 
 router.use(requireAuth, requireRole(Role.ATTORNEY));
 
@@ -226,6 +240,64 @@ router.patch(
 
     if (!existing) {
       return res.status(404).json({ error: "Booking not found" });
+    }
+
+    if (existing.status === req.body.status) {
+      return res.json({ booking: existing });
+    }
+
+    if (
+      existing.status === BookingStatus.CANCELLED &&
+      req.body.status === BookingStatus.CONFIRMED
+    ) {
+      return res.status(400).json({
+        error: "This booking has already been cancelled and cannot be confirmed.",
+      });
+    }
+
+    if (
+      existing.status === BookingStatus.CONFIRMED &&
+      req.body.status === BookingStatus.CANCELLED
+    ) {
+      return res.status(400).json({
+        error: "This booking has already been confirmed. Payment cannot be reversed.",
+      });
+    }
+
+    if (
+      req.body.status === BookingStatus.CONFIRMED &&
+      existing.paymentIntentId
+    ) {
+      try {
+        const stripe = requireStripe();
+        await stripe.paymentIntents.capture(existing.paymentIntentId);
+      } catch (error) {
+        console.error("Failed to capture booking payment", error);
+        return res.status(400).json({
+          error: errorMessage(
+            error,
+            "Unable to capture payment for this booking.",
+          ),
+        });
+      }
+    }
+
+    if (
+      req.body.status === BookingStatus.CANCELLED &&
+      existing.paymentIntentId
+    ) {
+      try {
+        const stripe = requireStripe();
+        await stripe.paymentIntents.cancel(existing.paymentIntentId);
+      } catch (error) {
+        console.error("Failed to cancel booking payment intent", error);
+        return res.status(400).json({
+          error: errorMessage(
+            error,
+            "Unable to release payment hold for this booking.",
+          ),
+        });
+      }
     }
 
     const booking = await prisma.booking.update({

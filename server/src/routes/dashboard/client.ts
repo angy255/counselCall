@@ -2,6 +2,7 @@ import { BookingStatus, Role } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
+import { requireStripe } from "../../lib/stripe";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 
@@ -12,6 +13,19 @@ const createReviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
   comment: z.string().min(1).max(2000),
 });
+
+function errorMessage(
+  error: unknown,
+  fallback: string,
+) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
+  }
+  return fallback;
+}
 
 router.use(requireAuth, requireRole(Role.CLIENT));
 
@@ -58,6 +72,16 @@ router.patch("/bookings/:id/cancel", async (req, res) => {
     return res.status(404).json({ error: "Booking not found" });
   }
 
+  if (booking.status === BookingStatus.CANCELLED) {
+    return res.json({ booking });
+  }
+
+  if (booking.status === BookingStatus.CONFIRMED) {
+    return res.status(400).json({
+      error: "Confirmed bookings cannot be cancelled. Please contact the attorney directly.",
+    });
+  }
+
   const bookingDateTime = new Date(
     `${booking.date.toISOString().slice(0, 10)}T${booking.startTime}:00.000Z`,
   );
@@ -66,6 +90,21 @@ router.patch("/bookings/:id/cancel", async (req, res) => {
     return res.status(400).json({
       error: "Bookings can only be cancelled more than 24 hours in advance",
     });
+  }
+
+  if (booking.paymentIntentId) {
+    try {
+      const stripe = requireStripe();
+      await stripe.paymentIntents.cancel(booking.paymentIntentId);
+    } catch (error) {
+      console.error("Failed to cancel booking payment intent", error);
+      return res.status(400).json({
+        error: errorMessage(
+          error,
+          "Unable to release payment hold for this booking.",
+        ),
+      });
+    }
   }
 
   const updated = await prisma.booking.update({

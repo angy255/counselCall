@@ -6,12 +6,24 @@ CounselCall helps clients find attorneys and book consultation sessions without 
 
 ![CounselCall demo](demo.gif)
 
+## Screenshots
+
+### Client Payment Flow
+
+![Client payment view](docs/screenshots/client_payment.png)
+
+![Client payment view](docs/screenshots/stripe_client_payment.png)
+
+### Client Dashboard
+
+
 ## Test Credentials
 
 > **Demo Login Box**
 >
 > - Shared password for seeded users: `password123`
 > - Attorney accounts:
+>   - `attorney.avery@example.com`
 >   - `attorney.casey@example.com`
 >   - `attorney.quinn@example.com`
 >   - `attorney.rowan@example.com`
@@ -56,6 +68,16 @@ Clients and attorneys also need a shared source of truth for booking status, can
 - **Caching**: Upstash Redis REST API (`@upstash/redis`)  
   Chosen to speed up repeated availability checks with minimal operational overhead.
 
+## Stripe Connect Integration
+
+- **Why Connect (not Checkout):** This app is a marketplace flow where clients pay the platform and attorneys receive payouts. Stripe Connect enables destination charges, platform fees, and attorney onboarding under one integration.
+- **Required environment variables:**
+  - Backend: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
+  - Frontend: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+- **Test card for local QA:** `4242 4242 4242 4242` (future date, any CVC, any ZIP)
+- **Attorney onboarding flow:** Attorney clicks **Connect Bank Account** -> backend creates/reuses Stripe Express account -> Stripe onboarding link redirects attorney -> status sync updates `stripeOnboardingComplete`.
+- **Payment flow summary:** Booking creation initializes a manual-capture PaymentIntent when attorney onboarding is complete. Client authorizes payment, then attorney confirmation captures funds. Platform fee is set to 10% via `application_fee_amount`.
+
 ## ER Diagram
 
 <details>
@@ -77,6 +99,8 @@ erDiagram
       json practiceAreas
       float hourlyRate
       string photoUrl
+      string stripeAccountId
+      boolean stripeOnboardingComplete
       datetime createdAt
     }
     Availability {
@@ -100,6 +124,8 @@ erDiagram
       string endTime
       string status
       string notes
+      string paymentIntentId
+      int amountInCents
       datetime createdAt
     }
     Review {
@@ -180,6 +206,8 @@ These steps assume you already have Node.js installed. This project currently ru
 | `UPSTASH_REDIS_REST_TOKEN` | `your-upstash-token` | Upstash REST API token |
 | `SUPABASE_URL` | `https://your-project.supabase.co` | Supabase project URL (used for uploads) |
 | `SUPABASE_SERVICE_KEY` | `your-service-role-key` | Server-side key for secure storage operations |
+| `STRIPE_SECRET_KEY` | `sk_test_...` | Stripe secret key used for Connect and PaymentIntent operations |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_...` | Stripe webhook signing secret used for signature verification |
 
 ### Frontend (`client/.env.local`)
 
@@ -187,6 +215,7 @@ These steps assume you already have Node.js installed. This project currently ru
 |---|---|---|
 | `API_URL` | `http://localhost:4000` | Backend base URL used by Next.js rewrite/proxy |
 | `NEXT_PUBLIC_API_URL` | `/api` | Browser-facing API path prefix (kept same-origin) |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `pk_test_...` | Stripe publishable key used by Stripe Elements on the booking page |
 
 </details>
 
@@ -204,6 +233,10 @@ These steps assume you already have Node.js installed. This project currently ru
 | `GET` | `/api/attorneys` | No | List attorneys, optional practice area filter |
 | `GET` | `/api/attorneys/:attorneyId` | No | Fetch attorney profile, availability, and reviews |
 | `POST` | `/api/bookings` | Yes (Client) | Create booking request (pending) |
+| `POST` | `/api/stripe/connect` | Yes (Attorney) | Start Stripe Connect onboarding and return redirect URL |
+| `GET` | `/api/stripe/connect/status` | Yes (Attorney) | Return current attorney Stripe onboarding status |
+| `GET` | `/api/stripe/connect/return` | Yes (Attorney) | Handle Stripe return redirect and sync onboarding status |
+| `POST` | `/api/stripe/webhook` | No (Stripe-signed) | Process Stripe webhook events (payment/account updates) |
 | `GET` | `/api/dashboard/attorney/profile` | Yes (Attorney) | Get attorney profile |
 | `PUT` | `/api/dashboard/attorney/profile` | Yes (Attorney) | Update attorney profile |
 | `GET` | `/api/dashboard/attorney/availability` | Yes (Attorney) | List recurring availability |
@@ -278,3 +311,6 @@ I also kept schedule data relational and simple (availability + blocked dates + 
 - Add pagination and search for larger attorney and review datasets.
 - Add request rate limiting and structured audit logging.
 - Add multi-timezone support for attorneys and clients in different regions.
+- Add attorney notifications for new bookings (email or in-app).
+- Add attorney-to-attorney client referral workflows.
+- Add attorney-initiated booking and scheduling flows.
