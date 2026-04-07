@@ -42,6 +42,8 @@ model AttorneyProfile {
   practiceAreas Json     @default("[]")
   hourlyRate    Float
   photoUrl      String?
+  stripeAccountId String?
+  stripeOnboardingComplete Boolean @default(false)
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -79,6 +81,8 @@ model Booking {
   endTime    String
   status     BookingStatus @default(PENDING)
   notes      String?
+  paymentIntentId String?
+  amountInCents Int?
   createdAt  DateTime      @default(now())
 
   client   User @relation("ClientBookings", fields: [clientId], references: [id], onDelete: Cascade)

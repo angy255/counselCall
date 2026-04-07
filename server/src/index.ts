@@ -7,6 +7,7 @@ import bookingRoutes from "./routes/bookings";
 import attorneyRoutes from "./routes/attorneys";
 import attorneyDashboardRoutes from "./routes/dashboard/attorney";
 import clientDashboardRoutes from "./routes/dashboard/client";
+import stripeRoutes from "./routes/stripe";
 import uploadRoutes from "./routes/upload";
 
 const app = express();
@@ -29,6 +30,7 @@ app.use("/api/attorneys", attorneyRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/dashboard/attorney", attorneyDashboardRoutes);
 app.use("/api/dashboard/client", clientDashboardRoutes);
+app.use("/api/stripe", stripeRoutes);
 app.use("/api/upload", uploadRoutes);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
