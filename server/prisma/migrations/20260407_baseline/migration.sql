@@ -27,6 +27,8 @@ CREATE TABLE "AttorneyProfile" (
     "practiceAreas" JSONB NOT NULL DEFAULT '[]',
     "hourlyRate" DOUBLE PRECISION NOT NULL,
     "photoUrl" TEXT,
+    "stripeAccountId" TEXT,
+    "stripeOnboardingComplete" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "AttorneyProfile_pkey" PRIMARY KEY ("id")
@@ -62,6 +64,8 @@ CREATE TABLE "Booking" (
     "endTime" TEXT NOT NULL,
     "status" "BookingStatus" NOT NULL DEFAULT 'PENDING',
     "notes" TEXT,
+    "paymentIntentId" TEXT,
+    "amountInCents" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Booking_pkey" PRIMARY KEY ("id")
@@ -123,3 +127,4 @@ ALTER TABLE "Review" ADD CONSTRAINT "Review_clientId_fkey" FOREIGN KEY ("clientI
 
 -- AddForeignKey
 ALTER TABLE "Review" ADD CONSTRAINT "Review_attorneyId_fkey" FOREIGN KEY ("attorneyId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
