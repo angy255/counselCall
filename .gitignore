@@ -4,11 +4,9 @@ node_modules
 .next
 dist
 *.log
+*.tsbuildinfo
 .DS_Store
 .vercel
-
-server/backups/
-*.dump
 
 server/backups/
 *.dump
